@@ -172,6 +172,11 @@ export default function App() {
         setShowInteraction(false);
         setShowCompletion(true);
 
+        // Auto-hide completion notification after 3 seconds
+        setTimeout(() => {
+          setShowCompletion(false);
+        }, 3000);
+
         // Spawn celebration particles
         for (let i = 0; i < 20; i++) {
           state.particles.push({
@@ -1174,7 +1179,7 @@ export default function App() {
             background: 'rgba(20, 20, 30, 0.95)',
             border: '2px solid #00ffcc',
             boxShadow: '0 0 30px rgba(0,255,204,0.3)',
-            animation: 'fadeIn 0.5s ease-out',
+            animation: 'fadeIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards',
           }}>
             <div className="text-lg font-mono font-bold mb-2" style={{ color: '#00ffcc' }}>
               ✓ QUEST COMPLETE
@@ -1224,6 +1229,10 @@ export default function App() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
           to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes fadeOut {
+          from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          to { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
         }
       `}</style>
     </div>
