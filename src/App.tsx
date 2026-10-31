@@ -115,6 +115,7 @@ export default function App() {
   const [hudQuests, setHudQuests] = useState<QuestState[]>([]);
   const [showInteraction, setShowInteraction] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [isQuestPaperOpen, setIsQuestPaperOpen] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1127,34 +1128,173 @@ export default function App() {
           style={{ imageRendering: 'pixelated' }}
         />
 
-        {/* HUD Overlay - Quest Panel */}
-        <div className="absolute top-4 left-4 p-3 rounded" style={{
-          background: 'rgba(20, 20, 30, 0.9)',
-          border: '1px solid rgba(255, 107, 157, 0.5)',
-          minWidth: '280px',
-          backdropFilter: 'blur(2px)',
-        }}>
-          <div className="text-xs font-mono mb-2" style={{ color: '#ff6b9d' }}>
-            ▸ ACTIVE QUEST
-          </div>
-          {hudQuests.map((quest, i) => (
-            <div key={quest.id} className="mb-1">
-              <div className="text-xs font-mono flex items-center gap-2" style={{
-                color: quest.completed ? '#00ffcc' : '#e0e0e0',
-              }}>
-                <span>{quest.completed ? '✓' : '○'}</span>
-                <span className={quest.completed ? 'line-through opacity-60' : ''}>
-                  {quest.title}
-                </span>
-              </div>
-              {!quest.completed && (
-                <div className="text-xs font-mono ml-4 mt-1" style={{ color: '#808080' }}>
-                  {quest.description}
-                </div>
-              )}
-            </div>
-          ))}
+        {/* HUD Overlay - Quest Paper Icon */}
+        <div 
+          className="absolute top-4 left-4 cursor-pointer hover:scale-110 transition-transform"
+          onClick={() => setIsQuestPaperOpen(true)}
+          title="Click to view quest"
+        >
+          {/* Small pixel paper icon */}
+          <svg width="48" height="48" viewBox="0 0 48 48" style={{ imageRendering: 'pixelated' }}>
+            {/* Paper shadow */}
+            <rect x="8" y="10" width="32" height="32" fill="rgba(0,0,0,0.3)" />
+            {/* Paper base */}
+            <rect x="6" y="8" width="32" height="32" fill="#d4c4a8" />
+            {/* Paper fold corner */}
+            <polygon points="38,8 38,16 30,8" fill="#b8a888" />
+            <polygon points="30,8 38,16 30,16" fill="#a89878" />
+            {/* Paper texture lines */}
+            <rect x="10" y="14" width="20" height="2" fill="#8a7a5a" opacity="0.4" />
+            <rect x="10" y="20" width="18" height="2" fill="#8a7a5a" opacity="0.4" />
+            <rect x="10" y="26" width="22" height="2" fill="#8a7a5a" opacity="0.4" />
+            <rect x="10" y="32" width="16" height="2" fill="#8a7a5a" opacity="0.4" />
+            {/* Quest indicator dot */}
+            <circle cx="36" cy="36" r="6" fill="#ff6b9d" />
+            <circle cx="36" cy="36" r="4" fill="#ff8fb3" />
+          </svg>
         </div>
+
+        {/* Quest Paper Modal */}
+        {isQuestPaperOpen && (
+          <div 
+            className="absolute inset-0 flex items-center justify-center z-50"
+            style={{ background: 'rgba(0, 0, 0, 0.7)' }}
+            onClick={() => setIsQuestPaperOpen(false)}
+          >
+            <div 
+              className="relative"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '400px',
+                minHeight: '300px',
+                padding: '40px 30px 30px 30px',
+                background: 'linear-gradient(135deg, #e8d8b8 0%, #d4c4a8 50%, #c8b898 100%)',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.1)',
+                imageRendering: 'pixelated',
+              }}
+            >
+              {/* Crumpled paper effect - wrinkles */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: `
+                  linear-gradient(45deg, transparent 48%, rgba(0,0,0,0.05) 49%, rgba(0,0,0,0.05) 51%, transparent 52%),
+                  linear-gradient(-45deg, transparent 48%, rgba(0,0,0,0.03) 49%, rgba(0,0,0,0.03) 51%, transparent 52%),
+                  linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.1) 50%, transparent 51%)
+                `,
+                pointerEvents: 'none',
+              }} />
+              
+              {/* Paper edge shadows for depth */}
+              <div style={{
+                position: 'absolute',
+                top: '2px',
+                left: '2px',
+                right: '2px',
+                bottom: '2px',
+                border: '1px solid rgba(0,0,0,0.1)',
+                pointerEvents: 'none',
+              }} />
+
+              {/* Folded corner */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '40px',
+                height: '40px',
+                background: 'linear-gradient(135deg, #b8a888 0%, #a89878 100%)',
+                clipPath: 'polygon(100% 0, 0 0, 100% 100%)',
+                boxShadow: '-2px 2px 5px rgba(0,0,0,0.2)',
+              }} />
+
+              {/* Close button (X) */}
+              <button
+                onClick={() => setIsQuestPaperOpen(false)}
+                className="absolute cursor-pointer hover:scale-110 transition-transform"
+                style={{
+                  top: '10px',
+                  right: '10px',
+                  width: '28px',
+                  height: '28px',
+                  background: 'rgba(100, 50, 50, 0.8)',
+                  border: '2px solid #5a2a2a',
+                  color: '#ffcccc',
+                  fontFamily: 'monospace',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10,
+                }}
+              >
+                ✕
+              </button>
+
+              {/* Quest content */}
+              <div style={{ fontFamily: 'monospace', position: 'relative', zIndex: 5 }}>
+                <div style={{ 
+                  fontSize: '18px', 
+                  fontWeight: 'bold', 
+                  color: '#3a2a1a',
+                  marginBottom: '20px',
+                  borderBottom: '2px solid #8a7a5a',
+                  paddingBottom: '10px',
+                  textShadow: '1px 1px 0 rgba(255,255,255,0.3)',
+                }}>
+                  📜 QUEST LOG
+                </div>
+                
+                {hudQuests.map((quest) => (
+                  <div key={quest.id} style={{ marginBottom: '20px' }}>
+                    <div style={{
+                      fontSize: '14px',
+                      color: quest.completed ? '#2a6a4a' : '#4a3a2a',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}>
+                      <span style={{ fontSize: '16px' }}>{quest.completed ? '✓' : '○'}</span>
+                      <span style={{ 
+                        textDecoration: quest.completed ? 'line-through' : 'none',
+                        opacity: quest.completed ? 0.6 : 1,
+                      }}>
+                        {quest.title}
+                      </span>
+                    </div>
+                    {!quest.completed && (
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#6a5a4a',
+                        marginLeft: '24px',
+                        fontStyle: 'italic',
+                        lineHeight: '1.5',
+                      }}>
+                        {quest.description}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Decorative ink stains */}
+                <div style={{
+                  position: 'absolute',
+                  bottom: '10px',
+                  right: '20px',
+                  width: '30px',
+                  height: '20px',
+                  background: 'radial-gradient(ellipse, rgba(60,40,20,0.2) 0%, transparent 70%)',
+                  borderRadius: '50%',
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Interaction Prompt */}
         {showInteraction && (
