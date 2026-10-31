@@ -205,12 +205,22 @@ export default function App() {
       ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
     };
 
-    // Draw parallax background layer 1 - far buildings (Khrushchyovkas)
+    // Deterministic pseudo-random for decay patterns (stable per building)
+    const seededRand = (seed: number) => {
+      let s = seed;
+      return () => {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return (s / 0x7fffffff);
+      };
+    };
+
+    // Draw parallax background layer 1 - far buildings (Khrushchyovkas) — DECAYED
     const drawFarBuildings = (cameraX: number) => {
       const parallaxFactor = 0.15;
       const offsetX = -cameraX * parallaxFactor;
 
       for (let i = 0; i < 12; i++) {
+        const rng = seededRand(i * 7919 + 31);
         const bx = i * 350 + offsetX;
         const bw = 120 + (i % 3) * 40;
         const bh = 200 + (i % 4) * 60;
@@ -218,43 +228,186 @@ export default function App() {
 
         if (bx + bw < -100 || bx > CONFIG.CANVAS_WIDTH + 100) continue;
 
-        // Building body
-        drawPixelRect(bx, by, bw, bh, CONFIG.COLORS.buildingDark);
+        // === MAIN BUILDING BODY (dirty concrete base) ===
+        drawPixelRect(bx, by, bw, bh, '#232325');
 
-        // Building edge highlight
-        drawPixelRect(bx, by, 3, bh, CONFIG.COLORS.building);
+        // === BROKEN / IRREGULAR ROOF ===
+        // Roof with missing chunks
+        const roofSegments = 6 + Math.floor(rng() * 4);
+        const segW = Math.ceil(bw / roofSegments);
+        for (let s = 0; s < roofSegments; s++) {
+          const isMissing = rng() > 0.7; // some chunks missing
+          if (!isMissing) {
+            const chunkH = 5 + Math.floor(rng() * 6);
+            drawPixelRect(bx + s * segW, by - chunkH, segW + 1, chunkH + 2, '#2e2e30');
+          }
+        }
+        // Jagged roof edge
+        for (let px = 0; px < bw; px += 2) {
+          const jag = Math.floor(rng() * 4);
+          drawPixelRect(bx + px, by - 1 - jag, 2, 2, '#2e2e30');
+        }
 
-        // Windows grid
+        // === WALL DECAY: peeling plaster patches ===
+        const patchCount = 4 + Math.floor(rng() * 6);
+        for (let p = 0; p < patchCount; p++) {
+          const px = bx + Math.floor(rng() * (bw - 20));
+          const py = by + Math.floor(rng() * (bh - 30));
+          const pw = 8 + Math.floor(rng() * 25);
+          const ph = 6 + Math.floor(rng() * 18);
+          // Darker exposed concrete underneath
+          drawPixelRect(px, py, pw, ph, '#1a1a1c');
+          // Torn edge fragments
+          for (let e = 0; e < 4; e++) {
+            const ex = px + Math.floor(rng() * pw);
+            const ey = py + Math.floor(rng() * ph);
+            drawPixelRect(ex, ey, 2 + Math.floor(rng() * 4), 2, '#2a2a2c');
+          }
+        }
+
+        // === STAINS & MOULD (dark vertical streaks from water damage) ===
+        const stainCount = 3 + Math.floor(rng() * 5);
+        for (let s = 0; s < stainCount; s++) {
+          const sx = bx + Math.floor(rng() * (bw - 6));
+          const sy = by + Math.floor(rng() * (bh * 0.4));
+          const sw = 3 + Math.floor(rng() * 6);
+          const sh = 20 + Math.floor(rng() * 60);
+          // Dark water stain
+          drawPixelRect(sx, sy, sw, sh, 'rgba(10, 10, 12, 0.6)');
+          // Greenish mould at bottom of stain
+          if (rng() > 0.4) {
+            drawPixelRect(sx - 1, sy + sh - 4, sw + 2, 6, 'rgba(30, 45, 25, 0.5)');
+          }
+        }
+
+        // === RUST STREAKS from metal elements ===
+        const rustCount = 2 + Math.floor(rng() * 3);
+        for (let r = 0; r < rustCount; r++) {
+          const rx = bx + Math.floor(rng() * (bw - 4));
+          const ry = by + Math.floor(rng() * (bh * 0.6));
+          const rh = 15 + Math.floor(rng() * 40);
+          drawPixelRect(rx, ry, 2, rh, 'rgba(80, 40, 20, 0.5)');
+          drawPixelRect(rx + 1, ry + 3, 1, rh - 6, 'rgba(100, 50, 20, 0.3)');
+        }
+
+        // === CRACKS in the walls ===
+        const crackCount = 2 + Math.floor(rng() * 4);
+        for (let c = 0; c < crackCount; c++) {
+          let cx = bx + Math.floor(rng() * bw);
+          let cy = by + Math.floor(rng() * (bh * 0.5));
+          const crackLen = 10 + Math.floor(rng() * 30);
+          for (let seg = 0; seg < crackLen; seg++) {
+            drawPixelRect(cx, cy, 1, 1, 'rgba(5, 5, 5, 0.8)');
+            // Random direction changes
+            cx += Math.floor(rng() * 3) - 1;
+            cy += Math.floor(rng() * 2);
+          }
+        }
+
+        // === WINDOWS (some broken, some boarded up, some dark) ===
         const windowRows = Math.floor(bh / 30);
         const windowCols = Math.floor(bw / 25);
         for (let row = 0; row < windowRows; row++) {
           for (let col = 0; col < windowCols; col++) {
             const wx = bx + 10 + col * 25;
             const wy = by + 15 + row * 30;
-            const isLit = Math.sin(i * 7 + row * 3 + col * 5 + state.time * 0.001) > 0.6;
-            const isNeon = Math.sin(i * 11 + row * 7 + col * 3) > 0.85;
+            const windowSeed = i * 100 + row * 13 + col * 7;
+            const wRand = seededRand(windowSeed);
+            const windowState = wRand(); // 0-1 determines window condition
 
-            if (isNeon) {
-              drawPixelRect(wx, wy, 12, 16, CONFIG.COLORS.buildingWindowNeon);
-            } else if (isLit) {
-              drawPixelRect(wx, wy, 12, 16, CONFIG.COLORS.buildingWindowLit);
+            if (windowState > 0.85) {
+              // BROKEN WINDOW — dark void with jagged glass shards
+              drawPixelRect(wx, wy, 12, 16, '#080808');
+              // Glass shard fragments
+              drawPixelRect(wx + 1, wy + 1, 3, 2, '#3a3a40');
+              drawPixelRect(wx + 8, wy + 12, 3, 3, '#3a3a40');
+              drawPixelRect(wx + 2, wy + 13, 2, 2, '#2a2a30');
+              // Crack lines
+              drawPixelRect(wx + 5, wy + 2, 1, 8, '#2a2a2a');
+              drawPixelRect(wx + 3, wy + 7, 6, 1, '#2a2a2a');
+            } else if (windowState > 0.7) {
+              // BOARDED UP — wooden planks
+              drawPixelRect(wx, wy, 12, 16, '#2a2018');
+              drawPixelRect(wx, wy + 2, 12, 2, '#3a2a1a');
+              drawPixelRect(wx, wy + 7, 12, 2, '#3a2a1a');
+              drawPixelRect(wx, wy + 12, 12, 2, '#3a2a1a');
+              // Nail dots
+              drawPixelRect(wx + 1, wy + 3, 1, 1, '#555');
+              drawPixelRect(wx + 10, wy + 8, 1, 1, '#555');
+            } else if (windowState > 0.55) {
+              // DEAD WINDOW — completely dark, dirty
+              drawPixelRect(wx, wy, 12, 16, '#0e0e10');
+              // Dirt smudge
+              drawPixelRect(wx + 2, wy + 4, 8, 3, 'rgba(20,20,15,0.6)');
             } else {
-              drawPixelRect(wx, wy, 12, 16, CONFIG.COLORS.buildingWindow);
+              // Regular dim window
+              const isLit = Math.sin(i * 7 + row * 3 + col * 5 + state.time * 0.001) > 0.75;
+              const isNeon = Math.sin(i * 11 + row * 7 + col * 3) > 0.88;
+              if (isNeon) {
+                drawPixelRect(wx, wy, 12, 16, CONFIG.COLORS.buildingWindowNeon);
+              } else if (isLit) {
+                drawPixelRect(wx, wy, 12, 16, CONFIG.COLORS.buildingWindowLit);
+              } else {
+                drawPixelRect(wx, wy, 12, 16, '#1a1a15');
+              }
+            }
+
+            // Window frame decay (dirty edges around most windows)
+            if (wRand() > 0.3) {
+              drawPixelRect(wx - 1, wy - 1, 14, 1, '#1a1a1a');
+              drawPixelRect(wx - 1, wy + 16, 14, 1, '#1a1a1a');
+            }
+            // Drip stain below window
+            if (wRand() > 0.5) {
+              drawPixelRect(wx + 3, wy + 16, 3, 6 + Math.floor(wRand() * 10), 'rgba(15,15,10,0.5)');
             }
           }
         }
 
-        // Roof details
-        drawPixelRect(bx - 3, by - 5, bw + 6, 8, CONFIG.COLORS.building);
+        // === BUILDING EDGE — crumbling ===
+        // Left edge
+        for (let ey = by; ey < by + bh; ey += 3) {
+          if (rng() > 0.6) {
+            drawPixelRect(bx - 1, ey, 2, 2, '#1e1e20');
+          }
+        }
+        // Right edge
+        for (let ey = by; ey < by + bh; ey += 4) {
+          if (rng() > 0.5) {
+            drawPixelRect(bx + bw, ey, 2, 3, '#1e1e20');
+          }
+        }
+
+        // === GROUND LEVEL: debris pile at base ===
+        const debrisCount = 3 + Math.floor(rng() * 5);
+        for (let d = 0; d < debrisCount; d++) {
+          const dx = bx + Math.floor(rng() * bw);
+          const dy = by + bh - 3 - Math.floor(rng() * 8);
+          const dw = 3 + Math.floor(rng() * 8);
+          const dh = 2 + Math.floor(rng() * 4);
+          drawPixelRect(dx, dy, dw, dh, rng() > 0.5 ? '#1e1e1e' : '#2a2520');
+        }
+
+        // === ANTENNA / PIPES on roof (broken) ===
+        if (rng() > 0.4) {
+          const pipeX = bx + Math.floor(rng() * (bw - 10));
+          const pipeH = 15 + Math.floor(rng() * 25);
+          drawPixelRect(pipeX, by - pipeH, 2, pipeH, '#3a3a3a');
+          // Bent/broken top
+          drawPixelRect(pipeX + 2, by - pipeH + 3, 4, 1, '#3a3a3a');
+          // Rust on pipe
+          drawPixelRect(pipeX, by - pipeH + 8, 2, 4, 'rgba(70,35,15,0.6)');
+        }
       }
     };
 
-    // Draw parallax background layer 2 - mid buildings
+    // Draw parallax background layer 2 - mid buildings (DECAYED, GRIM)
     const drawMidBuildings = (cameraX: number) => {
       const parallaxFactor = 0.35;
       const offsetX = -cameraX * parallaxFactor;
 
       for (let i = 0; i < 8; i++) {
+        const rng = seededRand(i * 4217 + 89);
         const bx = i * 500 + offsetX + 100;
         const bw = 150 + (i % 3) * 50;
         const bh = 160 + (i % 3) * 40;
@@ -262,34 +415,250 @@ export default function App() {
 
         if (bx + bw < -100 || bx > CONFIG.CANVAS_WIDTH + 100) continue;
 
-        // Building body
-        drawPixelRect(bx, by, bw, bh, CONFIG.COLORS.building);
+        // === BUILDING BODY — grimy, stained concrete ===
+        // Base wall (slightly different tones per building for variety)
+        const baseTone = 0x30 + Math.floor(rng() * 0x10);
+        const wallColor = `rgb(${baseTone}, ${baseTone}, ${baseTone + 2})`;
+        drawPixelRect(bx, by, bw, bh, wallColor);
 
-        // Darker side
-        drawPixelRect(bx + bw - 5, by, 5, bh, CONFIG.COLORS.buildingDark);
+        // === LARGE PEELING PLASTER AREAS ===
+        const peelCount = 3 + Math.floor(rng() * 4);
+        for (let p = 0; p < peelCount; p++) {
+          const px = bx + Math.floor(rng() * (bw - 30));
+          const py = by + Math.floor(rng() * (bh - 40));
+          const pw = 15 + Math.floor(rng() * 40);
+          const ph = 12 + Math.floor(rng() * 35);
+          // Exposed darker layer underneath
+          drawPixelRect(px, py, pw, ph, '#1c1c1e');
+          // Torn plaster edges (irregular border)
+          for (let e = 0; e < 8; e++) {
+            const ex = px + Math.floor(rng() * pw);
+            const ey = py + Math.floor(rng() * ph);
+            const ew = 2 + Math.floor(rng() * 6);
+            const eh = 1 + Math.floor(rng() * 3);
+            drawPixelRect(ex, ey, ew, eh, wallColor);
+          }
+          // Shadow inside the peeled area
+          drawPixelRect(px + 2, py + 2, pw - 4, 3, 'rgba(0,0,0,0.3)');
+        }
 
-        // Windows
+        // === WATER DAMAGE / MOULD STREAKS ===
+        const streakCount = 4 + Math.floor(rng() * 5);
+        for (let s = 0; s < streakCount; s++) {
+          const sx = bx + Math.floor(rng() * (bw - 8));
+          const sy = by + Math.floor(rng() * (bh * 0.3));
+          const sw = 3 + Math.floor(rng() * 8);
+          const sh = 30 + Math.floor(rng() * 80);
+          // Dark water streak
+          drawPixelRect(sx, sy, sw, sh, 'rgba(8, 8, 10, 0.5)');
+          // Darker center
+          drawPixelRect(sx + 1, sy + 5, sw - 2, sh - 10, 'rgba(5, 5, 8, 0.3)');
+          // Mould at bottom
+          if (rng() > 0.3) {
+            const mouldW = sw + 4 + Math.floor(rng() * 8);
+            drawPixelRect(sx - 2, sy + sh - 3, mouldW, 5 + Math.floor(rng() * 8), 'rgba(25, 40, 20, 0.5)');
+          }
+        }
+
+        // === MAJOR CRACKS (large structural cracks) ===
+        const crackCount = 2 + Math.floor(rng() * 3);
+        for (let c = 0; c < crackCount; c++) {
+          let cx = bx + Math.floor(rng() * bw);
+          let cy = by + Math.floor(rng() * (bh * 0.3));
+          const crackLen = 20 + Math.floor(rng() * 50);
+          for (let seg = 0; seg < crackLen; seg++) {
+            // Main crack line
+            drawPixelRect(cx, cy, 2, 1, 'rgba(0, 0, 0, 0.9)');
+            // Shadow beside crack
+            drawPixelRect(cx + 1, cy + 1, 1, 1, 'rgba(0, 0, 0, 0.4)');
+            // Branch cracks
+            if (rng() > 0.85) {
+              const branchLen = 3 + Math.floor(rng() * 8);
+              let bx2 = cx;
+              let by2 = cy;
+              for (let b = 0; b < branchLen; b++) {
+                drawPixelRect(bx2, by2, 1, 1, 'rgba(0, 0, 0, 0.7)');
+                bx2 += rng() > 0.5 ? 1 : -1;
+                by2 += 1;
+              }
+            }
+            cx += Math.floor(rng() * 3) - 1;
+            cy += 1 + Math.floor(rng() * 2);
+          }
+        }
+
+        // === RUST STREAKS from pipes/gutters ===
+        const rustCount = 3 + Math.floor(rng() * 4);
+        for (let r = 0; r < rustCount; r++) {
+          const rx = bx + Math.floor(rng() * (bw - 4));
+          const ry = by + Math.floor(rng() * (bh * 0.5));
+          const rh = 20 + Math.floor(rng() * 60);
+          // Main rust streak
+          drawPixelRect(rx, ry, 3, rh, 'rgba(90, 40, 15, 0.5)');
+          // Lighter edge
+          drawPixelRect(rx + 2, ry + 3, 1, rh - 6, 'rgba(110, 55, 20, 0.3)');
+          // Darker center drip
+          drawPixelRect(rx + 1, ry + 2, 1, rh - 4, 'rgba(60, 25, 10, 0.4)');
+        }
+
+        // === DARKER SIDE (shadow face of building) ===
+        drawPixelRect(bx + bw - 8, by, 8, bh, 'rgba(0, 0, 0, 0.3)');
+        // Stain on the dark side
+        drawPixelRect(bx + bw - 6, by + 20, 4, 40 + Math.floor(rng() * 30), 'rgba(0,0,0,0.2)');
+
+        // === WINDOWS — mostly dead, some broken, few lit ===
         const windowRows = Math.floor(bh / 35);
         const windowCols = Math.floor(bw / 30);
         for (let row = 0; row < windowRows; row++) {
           for (let col = 0; col < windowCols; col++) {
             const wx = bx + 12 + col * 30;
             const wy = by + 20 + row * 35;
-            const isLit = Math.sin(i * 13 + row * 5 + col * 7 + state.time * 0.002) > 0.5;
+            const wSeed = i * 200 + row * 17 + col * 11;
+            const wRng = seededRand(wSeed);
+            const wState = wRng();
 
-            if (isLit) {
-              drawPixelRect(wx, wy, 14, 18, CONFIG.COLORS.buildingWindowLit);
-              // Window glow
-              ctx.fillStyle = 'rgba(232, 212, 77, 0.1)';
-              ctx.fillRect(wx - 3, wy - 3, 20, 24);
+            // Window frame (crumbling)
+            drawPixelRect(wx - 2, wy - 2, 18, 22, '#1a1a1a');
+
+            if (wState > 0.82) {
+              // SMASHED WINDOW — dark void, glass shards
+              drawPixelRect(wx, wy, 14, 18, '#050505');
+              // Jagged glass remains
+              drawPixelRect(wx, wy, 4, 3, '#2a2a30');
+              drawPixelRect(wx + 10, wy + 14, 4, 4, '#2a2a30');
+              drawPixelRect(wx + 1, wy + 15, 3, 2, '#252530');
+              drawPixelRect(wx + 11, wy + 1, 2, 3, '#2a2a30');
+              // Crack pattern
+              drawPixelRect(wx + 6, wy + 2, 1, 10, '#1a1a1a');
+              drawPixelRect(wx + 3, wy + 8, 8, 1, '#1a1a1a');
+              drawPixelRect(wx + 4, wy + 5, 1, 6, '#1a1a1a');
+            } else if (wState > 0.7) {
+              // BOARDDED UP
+              drawPixelRect(wx, wy, 14, 18, '#2a1e14');
+              // Planks
+              drawPixelRect(wx, wy + 1, 14, 3, '#3a2a18');
+              drawPixelRect(wx, wy + 6, 14, 3, '#352618');
+              drawPixelRect(wx, wy + 11, 14, 3, '#3a2a18');
+              drawPixelRect(wx, wy + 16, 14, 2, '#302218');
+              // Nails
+              drawPixelRect(wx + 2, wy + 2, 1, 1, '#666');
+              drawPixelRect(wx + 11, wy + 7, 1, 1, '#666');
+              drawPixelRect(wx + 3, wy + 12, 1, 1, '#555');
+              // Gap between planks (darkness visible)
+              drawPixelRect(wx + 5, wy + 4, 4, 2, '#0a0a0a');
+            } else if (wState > 0.5) {
+              // FILTHY DEAD WINDOW
+              drawPixelRect(wx, wy, 14, 18, '#0c0c0e');
+              // Grime/dirt
+              drawPixelRect(wx + 2, wy + 3, 10, 4, 'rgba(15,15,10,0.6)');
+              drawPixelRect(wx + 1, wy + 12, 6, 3, 'rgba(15,15,10,0.4)');
+              // Curtain remnant
+              if (wRng() > 0.5) {
+                drawPixelRect(wx + 10, wy + 1, 3, 10, 'rgba(30,30,25,0.7)');
+              }
             } else {
-              drawPixelRect(wx, wy, 14, 18, CONFIG.COLORS.buildingWindow);
+              // LIT WINDOW (rare, dim)
+              const isLit = Math.sin(i * 13 + row * 5 + col * 7 + state.time * 0.002) > 0.6;
+              if (isLit) {
+                // Dim sickly yellow light
+                drawPixelRect(wx, wy, 14, 18, '#a89830');
+                // Window glow (weaker, sicklier)
+                ctx.fillStyle = 'rgba(168, 152, 48, 0.06)';
+                ctx.fillRect(wx - 4, wy - 4, 22, 26);
+                // Silhouette inside (creepy)
+                if (wRng() > 0.7) {
+                  drawPixelRect(wx + 5, wy + 4, 4, 8, 'rgba(40,35,20,0.5)');
+                }
+              } else {
+                drawPixelRect(wx, wy, 14, 18, '#111113');
+                // Dirt
+                drawPixelRect(wx + 3, wy + 5, 8, 3, 'rgba(10,10,8,0.5)');
+              }
+            }
+
+            // Drip stain below window
+            if (wRng() > 0.4) {
+              const dripW = 2 + Math.floor(wRng() * 4);
+              const dripH = 8 + Math.floor(wRng() * 15);
+              drawPixelRect(wx + 4, wy + 18, dripW, dripH, 'rgba(10,10,8,0.5)');
             }
           }
         }
 
-        // Entrance
-        drawPixelRect(bx + bw / 2 - 12, by + bh - 35, 24, 35, '#1a1a1a');
+        // === ENTRANCE — dark, threatening, broken ===
+        const entranceX = bx + Math.floor(bw / 2) - 14;
+        const entranceY = by + bh - 40;
+        // Door frame (crumbling)
+        drawPixelRect(entranceX - 3, entranceY - 3, 31, 43, '#1a1a1a');
+        // Dark void of entrance
+        drawPixelRect(entranceX, entranceY, 25, 40, '#050505');
+        // Broken door (hanging off hinges)
+        drawPixelRect(entranceX + 1, entranceY + 2, 10, 36, '#222018');
+        // Door gap (darkness inside)
+        drawPixelRect(entranceX + 12, entranceY + 2, 11, 36, '#020202');
+        // Graffiti near entrance
+        if (rng() > 0.4) {
+          drawPixelRect(entranceX - 15, entranceY + 10, 10, 3, 'rgba(100, 30, 30, 0.4)');
+          drawPixelRect(entranceX - 12, entranceY + 14, 6, 2, 'rgba(100, 30, 30, 0.3)');
+        }
+        // Broken light above entrance
+        drawPixelRect(entranceX + 8, entranceY - 8, 8, 4, '#2a2a2a');
+        if (rng() > 0.5) {
+          // Flickering broken light
+          const flicker = Math.sin(state.time * 0.15 + i * 5) > 0.3;
+          if (flicker) {
+            drawPixelRect(entranceX + 9, entranceY - 7, 6, 2, 'rgba(255, 200, 100, 0.4)');
+            ctx.fillStyle = 'rgba(255, 200, 100, 0.03)';
+            ctx.fillRect(entranceX - 5, entranceY - 10, 38, 20);
+          }
+        }
+
+        // === DEBRIS at building base ===
+        const debrisCount = 5 + Math.floor(rng() * 6);
+        for (let d = 0; d < debrisCount; d++) {
+          const dx = bx + Math.floor(rng() * bw);
+          const dy = by + bh - 2 - Math.floor(rng() * 10);
+          const dw = 3 + Math.floor(rng() * 10);
+          const dh = 2 + Math.floor(rng() * 5);
+          const debrisColor = rng() > 0.6 ? '#1a1816' : (rng() > 0.5 ? '#252018' : '#1e1e1e');
+          drawPixelRect(dx, dy, dw, dh, debrisColor);
+        }
+
+        // === BROKEN DRAINPIPE ===
+        if (rng() > 0.3) {
+          const pipeX = bx + bw - 12;
+          const pipeTop = by + 5;
+          const pipeBot = by + bh - 20;
+          // Pipe segments (some missing)
+          for (let py = pipeTop; py < pipeBot; py += 8) {
+            if (rng() > 0.2) {
+              drawPixelRect(pipeX, py, 4, 7, '#3a3a3a');
+              // Rust on pipe
+              if (rng() > 0.6) {
+                drawPixelRect(pipeX, py + 2, 4, 3, 'rgba(80, 40, 15, 0.4)');
+              }
+            }
+          }
+          // Broken bottom section hanging
+          drawPixelRect(pipeX + 1, pipeBot, 3, 8, '#3a3a3a');
+          drawPixelRect(pipeX + 2, pipeBot + 8, 2, 4, '#3a3a3a');
+        }
+
+        // === ROOF — damaged, with missing chunks ===
+        for (let rx = 0; rx < bw; rx += 3) {
+          const isBroken = rng() > 0.75;
+          if (!isBroken) {
+            const roofH = 4 + Math.floor(rng() * 5);
+            drawPixelRect(bx + rx, by - roofH, 3, roofH + 1, '#2a2a2c');
+          }
+        }
+        // Antenna (bent)
+        if (rng() > 0.5) {
+          const antX = bx + Math.floor(rng() * (bw - 20)) + 10;
+          drawPixelRect(antX, by - 25, 2, 25, '#444');
+          drawPixelRect(antX + 2, by - 22, 5, 1, '#444');
+          drawPixelRect(antX + 6, by - 20, 1, 4, '#444');
+        }
       }
     };
 
